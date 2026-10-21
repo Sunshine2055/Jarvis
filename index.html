@@ -53,12 +53,30 @@ label{color:var(--dim);font-size:14px}
 .hint{color:var(--dim);font-size:14px}
 pre{white-space:pre-wrap;word-break:break-word;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin:0}
 textarea{min-height:120px;font-size:12px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 14px;border-bottom:1px solid var(--line)}
+.tab{white-space:nowrap}.tab.on{background:var(--c);color:#000}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px}
+.pcard p{margin:0;word-break:break-word}
+.ph{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.demo{border:1px dashed var(--warn);color:var(--warn);border-radius:10px;padding:8px;font-size:14px}
+.warnb{border:1px solid var(--bad);color:var(--bad);border-radius:10px;padding:8px}
+.okt{color:#4dffb0;font-size:14px}.badt{color:var(--bad);font-size:14px}
+.chip{border:1px solid var(--line);border-radius:99px;padding:2px 8px;margin:2px;display:inline-block;font-size:14px}
+.chip a{color:var(--bad);margin-left:4px}
+.pv{border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:6px}
+.pvb{white-space:pre-wrap;word-break:break-word;margin:4px 0}
+.modal{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:9;padding:20px}
+.modal[hidden]{display:none}
+.mbox{background:var(--panel);border:1px solid var(--c);border-radius:12px;padding:16px;max-width:420px;display:flex;flex-direction:column;gap:12px}
+.mbox p{margin:0}
 </style>
 </head>
 <body>
 <header>
   <h1>JARVIS</h1>
   <span class="badge" id="net">OFFLINE</span>
+  <button id="bSoc" aria-label="Social Hub">Hub</button>
   <button id="bNotes" aria-label="Notes">Notes</button>
   <button id="bSet" aria-label="Settings">⚙</button>
 </header>
@@ -80,6 +98,14 @@ textarea{min-height:120px;font-size:12px}
     <div id="nList"></div>
   </div>
 </div>
+
+<div class="sheet" id="pSoc">
+  <div class="bar"><h2>SOCIAL HUB</h2><span class="badge on" style="margin-right:8px">DRAFTS ONLY</span><button data-close>Close</button></div>
+  <div class="tabs" id="socTabs"></div>
+  <div class="hint" id="socNote" style="padding:0 14px"></div>
+  <div class="body" id="socBody"></div>
+</div>
+<div class="modal" id="socModal" hidden><div class="mbox"><p id="socMsg"></p><div class="row"><button id="socNo">Cancel</button><button id="socYes">Confirm</button></div></div></div>
 
 <div class="sheet" id="pSet">
   <div class="bar"><h2>SETTINGS</h2><button data-close>Close</button></div>
@@ -146,17 +172,17 @@ const Brain={providers:{},active:'local',
     const local=await this.providers.local.respond(text);
     if(local!==null)return local;
     return this.providers.worker.respond(text)}};
-Brain.register('worker',{label:'AI via your Worker (needs Internet)',async respond(){
+Brain.register('worker',{label:'AI via your Worker (needs Internet)',async respond(_t,custom){this.lastOk=false;
   if(!navigator.onLine)return 'The AI needs Internet and you are offline. Offline commands still work: time, date, notes. Type "help".';
   if(!/^https:\/\//.test(S.worker||''))return 'AI is not set up yet. Open Settings and paste your Worker URL (starts with https://).';
-  const messages=chat.slice(-8).map(m=>({role:m.role==='user'?'user':'assistant',text:m.text}));
+  const messages=custom||chat.slice(-8).map(m=>({role:m.role==='user'?'user':'assistant',text:m.text}));
   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),25000);
   try{
     const r=await fetch(S.worker,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages}),signal:ctl.signal});
     let d={};try{d=await r.json()}catch(e){}
     if(r.status===429||d.code==='limit')return 'AI usage limit reached (free tier). Try again later. Offline commands and notes still work.';
     if(!r.ok||!d.reply)return 'AI service error ('+r.status+(d.code?', '+d.code:'')+'): '+(d.error||'no reply')+'. Offline commands still work.';
-    return d.reply;
+    this.lastOk=true;return d.reply;
   }catch(e){return e.name==='AbortError'?'The AI took too long to answer. Try again.':'Could not reach the AI service. Check Internet and the Worker URL in Settings. Offline commands still work.'}
   finally{clearTimeout(to)}
 }});
@@ -174,6 +200,7 @@ Brain.register('local',{label:'Local rules (offline)',async respond(raw){
     return ask('Delete all '+notes.length+' notes? This cannot be undone.',()=>{notes=[];save();UI.renderNotes();return 'All notes deleted.'});
   if(/^(what('?s| is) the time|what time|current time|time( now)?|tell me the time)\b|समय|कति बज्यो/.test(l))return 'The time is '+now.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'.';
   if(/^(what('?s| is) (the |today'?s )?date|today'?s date|what day is (it|today)|date|today)\??$|मिति/.test(l))return 'Today is '+now.toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'.';
+  if(/^(open )?(the )?(social hub|social)$/.test(l)){Social.open();return 'Opening the Social Hub (demo mode, nothing is sent).'}
   m=l.match(/^open\s+(.+)$/);
   if(m){const k=m[1].replace(/^(the\s+)?(website\s+)?/,'').trim();
     if(SITES[k])return ask('Open '+k+' in your browser? (needs Internet)',()=>{window.open(SITES[k],'_blank','noopener');return 'Opening '+k+'.'});
@@ -245,6 +272,171 @@ const Voice={rec:null,listening:false,
     add('Browser',navigator.userAgent);
     return L.join('\n')}};
 
+/* ===== MODULE: Social Hub (Phase 3B: drafts/schedules via your Worker + D1. NO platform publishing. No tokens in this file.) ===== */
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const Social={
+  PL:{
+    facebook:{n:'Facebook Page',cap:0,note:'Facebook Pages API. Text, photo or video posts. Needs a Page you manage and Meta app review for live use.'},
+    instagram:{n:'Instagram',cap:2200,note:'Professional (Business/Creator) account only. Needs an image or video. Text-only posts are unsupported.'},
+    whatsapp:{n:'WhatsApp Business',cap:0,note:'Not a feed. Only 1-to-1 messages: free-form inside the 24h window, approved templates outside it, opt-in required. Broadcast posts are unsupported.'},
+    tiktok:{n:'TikTok',cap:2200,note:'Content Posting API. Video only. Unaudited apps are limited to private posts.'},
+    youtube:{n:'YouTube',cap:5000,note:'Video upload only (title max 100 characters). Daily API quota applies.'}},
+  INBOX:[
+    {id:'i1',p:'facebook',t:'comment',from:'Demo User A',x:'What are your opening hours?'},
+    {id:'i2',p:'instagram',t:'comment',from:'Demo User B',x:'Love this! Do you deliver to Pokhara?'},
+    {id:'i3',p:'whatsapp',t:'message',from:'Demo Customer 1 (window open)',x:'Hi, is my order ready?',win:true},
+    {id:'i4',p:'whatsapp',t:'message',from:'Demo Customer 2 (window closed)',x:'Hello?',win:false},
+    {id:'i5',p:'youtube',t:'comment',from:'Demo Viewer',x:'Great video, can you make one about notes?'}],
+  tabs:[['dash','Hub'],['compose','Compose'],['drafts','Posts'],['inbox','Inbox'],['log','Log']],
+  d:Object.assign({replies:{}},Store.get('social',{})),   /* only demo inbox replies stay local */
+  tab:'dash',form:null,posts:[],audit:[],user:null,err:'',loading:false,
+  save(){Store.set('social',{replies:this.d.replies})},
+  fmt(ts){return new Date(ts).toLocaleString('en-GB',{timeZone:'Asia/Kathmandu',dateStyle:'medium',timeStyle:'short'})+' NPT'},
+  note(m){const e=$('#socNote');e.textContent=m;clearTimeout(this.nt);this.nt=setTimeout(()=>{e.textContent=''},4500)},
+  ask(msg,fn){$('#socMsg').textContent=msg;const m=$('#socModal');m.hidden=false;$('#socYes').onclick=()=>{m.hidden=true;fn()};$('#socNo').onclick=()=>{m.hidden=true}},
+  blank(){return{id:null,text:'',title:'',tags:'',platforms:[],media:[],when:''}},
+  tags(s){return(String(s).match(/[^\s,#]+/g)||[]).map(t=>'#'+t).join(' ')},
+  full(f){return[f.text,this.tags(f.tags)].filter(Boolean).join('\n\n')},
+  names(a){return a.map(k=>this.PL[k].n).join(', ')||'no platform'},
+  open(){$('#pSoc').classList.add('open');this.show(this.tab)},
+  show(t){this.tab=t;this.err='';
+    $('#socTabs').innerHTML=this.tabs.map(([k,n])=>`<button class="tab${k===t?' on':''}" data-tab="${k}">${n}</button>`).join('');
+    $('#socBody').innerHTML=this['v_'+t]();
+    if(t==='compose')this.prev();
+    this.sync(t)},
+
+  /* Rules per platform. Unsupported combinations are reported, never simulated as success. */
+  check(p,k){
+    const m=p.media||[],img=m.some(x=>x.type.startsWith('image')),vid=m.some(x=>x.type.startsWith('video'));
+    if(k==='whatsapp')return{ok:false,why:'Unsupported: WhatsApp has no feed posts. Use Inbox replies (24h window) or approved templates (later phase).'};
+    if(k==='facebook')return(p.text||m.length)?{ok:true}:{ok:false,why:'Add text or media.'};
+    if(k==='instagram')return(img||vid)?{ok:true}:{ok:false,why:'Unsupported: Instagram needs an image or video.'};
+    if(!vid)return{ok:false,why:'Unsupported: '+this.PL[k].n+' needs a video.'};
+    if(k==='youtube'){if(!(p.title||'').trim())return{ok:false,why:'YouTube needs a title.'};if(p.title.length>100)return{ok:false,why:'YouTube title is over 100 characters.'}}
+    return{ok:true}},
+
+
+  /* ---------- backend client (session cookie is HttpOnly; JavaScript never sees it) ---------- */
+  MSG:{unauthenticated:'Sign in required.',forbidden:'You do not own that item.',rate_limited:'Too many requests. Wait a minute and try again.',not_configured:'Backend setup is incomplete.',schema_mismatch:'Database tables do not match what the Worker expects.',invalid_credentials:'Wrong username or passphrase.',origin_not_allowed:'This site is not in the Worker ALLOWED_ORIGIN list.',only_drafts_can_be_edited:'Only drafts can be edited. Cancel the schedule first.',only_drafts_can_be_deleted:'Only drafts can be deleted. Cancel the schedule first.',invalid_transition:'That action is not allowed in the current status.',empty_post:'Add some text, a title or media first.',needs_platforms_and_content:'Pick at least one platform and add content first.',scheduledAt_out_of_range:'Pick a time between 1 minute and 1 year from now.',server_error:'Server error. Try again later.'},
+  async api(method,path,body){
+    if(!/^https:\/\//.test(S.worker||''))throw{message:'Set your Worker URL in Settings first.'};
+    if(!navigator.onLine)throw{message:'You are offline. Posts and schedules need the backend (Internet).'};
+    let r;try{r=await fetch(new URL(S.worker).origin+path,{method,credentials:'include',headers:{'Content-Type':'application/json','X-Requested-With':'jarvis'},body:body?JSON.stringify(body):undefined})}
+    catch(e){throw{message:'Could not reach the backend. Check the Worker URL, Internet, and that ALLOWED_ORIGIN matches this site.'}}
+    let d={};try{d=await r.json()}catch(e){}
+    if(!r.ok){if(r.status===401){this.user=null}
+      throw{status:r.status,message:(this.MSG[d.error]||('Request failed ('+r.status+(d.error?', '+d.error:'')+')'))+(d.missing?' Missing: '+d.missing.join(', ')+'.':'')}}
+    return d},
+  async sync(t){
+    if(!['dash','drafts','log'].includes(t))return;
+    this.loading=true;this.rerender(t);
+    try{
+      if(!this.user){try{this.user=(await this.api('GET','/api/me')).user}catch(e){if(e.status!==401)throw e}}
+      if(this.user&&t==='drafts')this.posts=(await this.api('GET','/api/posts')).posts;
+      if(this.user&&t==='log')this.audit=(await this.api('GET','/api/audit?limit=50')).entries;
+      this.err=''}
+    catch(e){this.err=e.message||'Error'}
+    this.loading=false;this.rerender(t)},
+  rerender(t){if(this.tab===t&&$('#pSoc').classList.contains('open')){const b=$('#socBody');const ae=document.activeElement&&document.activeElement.id;if(ae&&/^l(User|Pass)$/.test(ae))return;b.innerHTML=this['v_'+t]();}},
+  banner(){return(this.err?`<div class="warnb">⚠ ${esc(this.err)}</div>`:'')+(this.loading?'<p class="hint">Loading…</p>':'')},
+
+  /* ---------- views ---------- */
+  v_dash(){
+    const sc=this.posts.filter(p=>p.status==='scheduled').length;
+    return '<div class="demo">Publishing to platforms is NOT enabled. Drafts and schedules are stored on your own backend only; nothing is sent to any social platform.</div>'
+    +this.banner()
+    +(this.user?`<div class="pcard"><div class="ph"><b>Backend</b><small class="okt">● Signed in as ${esc(this.user)}</small></div><div class="row"><button data-act="logout">Sign out</button></div></div>`
+    :`<div class="pcard"><div class="ph"><b>Sign in</b><small class="badt">● Signed out</small></div><input id="lUser" placeholder="Username" autocomplete="username" autocapitalize="off"><input id="lPass" type="password" placeholder="Passphrase" autocomplete="current-password"><button data-act="login">Sign in</button><small class="hint">Accounts are configured on your Worker (AUTH_USERS secret). The passphrase is never stored in this app.</small></div>`)
+    +`<div class="hint">Time zone: Asia/Kathmandu (UTC+5:45), stored in UTC on the server${this.user?' · Scheduled posts: '+sc:''}</div>`
+    +Object.values(this.PL).map(v=>`<div class="pcard"><div class="ph"><b>${v.n}</b><small class="badt">● Not connected</small></div><p class="hint">${esc(v.note)}</p><button disabled>Connect (later phase)</button></div>`).join('')},
+  v_compose(){const f=this.form||(this.form=this.blank());
+    return `<div class="demo">Saved to your backend as a draft or schedule. Not published anywhere.</div>
+    <input id="cTitle" placeholder="Title (YouTube, max 100)" value="${esc(f.title)}">
+    <textarea id="cText" placeholder="Caption / text">${esc(f.text)}</textarea>
+    <input id="cTags" placeholder="Hashtags (comma or space separated)" value="${esc(f.tags)}">
+    <label>Media (only name, type and size are saved; files are not uploaded)<input type="file" id="cFile" accept="image/*,video/*" multiple></label>
+    <div>${f.media.map((m,i)=>`<span class="chip">${esc(m.name)} <a data-act="rmmedia" data-id="${i}">✕</a></span>`).join('')}</div>
+    <div class="row">${Object.entries(this.PL).map(([k,v])=>`<label><input type="checkbox" data-plat="${k}" style="width:auto" ${f.platforms.includes(k)?'checked':''}> ${v.n}</label>`).join('')}</div>
+    <div id="cPrev"></div>
+    <label>Schedule time (Asia/Kathmandu)<input type="datetime-local" id="cWhen" value="${esc(f.when)}"></label>
+    <div class="row"><button data-act="save">${f.id?'Update draft':'Save draft'}</button><button data-act="sched">Schedule</button><button data-act="clear">Clear</button></div>`},
+  v_drafts(){
+    let h=this.banner();
+    if(!this.user)return h+(this.loading?'':'<p class="hint">Sign in on the Hub tab to see your posts.</p>');
+    if(!this.posts.length&&!this.loading&&!this.err)return h+'<p class="hint">No posts yet. Use Compose.</p>';
+    return h+this.posts.map(p=>`<div class="pcard"><div class="ph"><b>${esc((p.text||p.title||'(media only)').slice(0,50))}</b><small>${esc(p.status)}</small></div>
+      <div class="hint">${esc(this.names(p.platforms))}${p.scheduledAt?' · '+esc(this.fmt(p.scheduledAt)):''}</div>
+      ${p.status==='scheduled'?'<div class="hint">Scheduled only. Publishing is not enabled, so it will not be sent.</div>':''}
+      <div class="row">
+      ${p.status==='draft'?`<button data-act="edit" data-id="${p.id}">Edit</button><button class="danger" data-act="del" data-id="${p.id}">Delete</button>`:''}
+      ${p.status==='scheduled'?`<button data-act="unsched" data-id="${p.id}">Cancel schedule</button>`:''}</div></div>`).join('')},
+  v_inbox(){
+    return '<div class="demo">DEMO DATA: sample messages kept only in this browser. A live inbox needs approved platform access (later phase).</div><p class="hint">AI drafts send the message text to your AI service (Gemini via your Worker). Nothing goes to any platform until you approve it.</p>'
+    +this.INBOX.map(m=>{const r=this.d.replies[m.id],closed=m.p==='whatsapp'&&m.win===false;
+      return `<div class="pcard"><div class="ph"><b>${this.PL[m.p].n} · ${m.t}</b><small>${esc(m.from)}</small></div><p>${esc(m.x)}</p>`
+      +(r?`<div class="okt">Replied (demo, not sent): ${esc(r.text)}</div>`
+      :closed?'<div class="badt">Free-form reply unsupported: the WhatsApp 24-hour window is closed. An approved template is required (later phase).</div>'
+      :`<textarea id="r_${m.id}" placeholder="Write or generate a reply"></textarea><div class="row"><button data-act="aid" data-id="${m.id}">AI draft</button><button data-act="send" data-id="${m.id}">Approve &amp; record (demo)</button></div><small id="s_${m.id}" class="hint"></small>`)
+      +'</div>'}).join('')},
+  v_log(){let h=this.banner()+'<div class="row"><button data-act="reload">Refresh</button></div>';
+    if(!this.user)return h+(this.loading?'':'<p class="hint">Sign in on the Hub tab to see your audit history.</p>');
+    if(!this.audit.length&&!this.loading&&!this.err)return h+'<p class="hint">No activity yet.</p>';
+    return h+this.audit.map(e=>`<div class="${e.outcome==='ok'?'hint':'badt'}">${esc(this.fmt(e.createdAt))} · ${esc(e.action)} · ${esc(e.outcome)}${e.postId?' · '+esc(e.postId.slice(0,8)):''}${e.detail?' · '+esc(e.detail):''}</div>`).join('')},
+  /* ---------- compose helpers ---------- */
+  collect(){const f=this.form||(this.form=this.blank());
+    if($('#cText')){f.text=$('#cText').value;f.title=$('#cTitle').value;f.tags=$('#cTags').value;f.when=$('#cWhen').value;
+      f.platforms=[...document.querySelectorAll('[data-plat]:checked')].map(e=>e.dataset.plat)}
+    return f},
+  prev(){const f=this.collect(),el=$('#cPrev');if(!el)return;
+    el.innerHTML=f.platforms.length?f.platforms.map(k=>{const v=this.PL[k],c=this.check(f,k),full=this.full(f),over=v.cap&&full.length>v.cap;
+      return `<div class="pv"><b>${v.n}</b> preview<div class="pvb">${k==='youtube'&&f.title?'<b>'+esc(f.title)+'</b><br>':''}${esc(full)||'<i>(empty)</i>'}${f.media.length?'<br><small>📎 '+f.media.map(m=>esc(m.name)).join(', ')+'</small>':''}</div><small class="${c.ok&&!over?'okt':'badt'}">${c.ok?(over?'Over about '+v.cap+' characters (verify the current limit)':'Looks supported'+(v.cap?' · '+full.length+'/~'+v.cap:'')):esc(c.why)}</small></div>`}).join(''):'<p class="hint">Pick platforms to see previews.</p>'},
+  async aiDraft(id){
+    const m=this.INBOX.find(x=>x.id===id),st=$('#s_'+id),ta=$('#r_'+id);if(!m||!st)return;st.textContent='Generating…';
+    const w=Brain.providers.worker;
+    const r=await w.respond(null,[{role:'user',text:'Write a short, polite reply (max 2 sentences) to this customer '+m.t+' on '+this.PL[m.p].n+'. Do not promise prices, dates or anything specific. Reply with the reply text only.\n\nCustomer: '+m.x}]);
+    if(w.lastOk){ta.value=r;st.textContent='AI draft ready. Edit it, then approve.'}else st.textContent=r},
+
+  async run(fn,okMsg){try{await fn();if(okMsg)this.note(okMsg);return true}catch(e){this.err=e.message||'Error';this.note(this.err);this.rerender(this.tab);return false}},
+  body(f){return{text:f.text,title:f.title,hashtags:f.tags,platforms:f.platforms,media:f.media}},
+  empty(f){return!(f.text.trim()||f.title.trim()||f.media.length)},
+  act(a,id){
+    const p=this.posts.find(x=>x.id===id);
+    if(a==='clear'){this.form=null;return this.show('compose')}
+    if(a==='reload')return this.sync(this.tab);
+    if(a==='rmmedia'){this.collect().media.splice(+id,1);return this.show('compose')}
+    if(a==='login'){const u=$('#lUser').value.trim(),pw=$('#lPass').value;if(!u||!pw)return this.note('Enter username and passphrase.');
+      return this.run(async()=>{this.user=(await this.api('POST','/api/login',{username:u,passphrase:pw})).user;$('#lPass').value='';this.err=''},'Signed in.').then(ok=>{if(ok)this.show('dash')})}
+    if(a==='logout')return this.run(async()=>{await this.api('POST','/api/logout');this.user=null;this.posts=[];this.audit=[]},'Signed out.').then(()=>this.show('dash'));
+    if(a==='save'){const f=this.collect();if(this.empty(f))return this.note('Add some text, a title or media first.');
+      return this.run(async()=>{if(f.id)await this.api('PATCH','/api/posts/'+f.id,this.body(f));else await this.api('POST','/api/posts',this.body(f))},'Draft saved.').then(ok=>{if(ok){this.form=null;this.show('drafts')}})}
+    if(a==='sched'){const f=this.collect();
+      if(this.empty(f))return this.note('Add some text, a title or media first.');
+      if(!f.platforms.length)return this.note('Pick at least one platform.');
+      if(!f.when)return this.note('Pick a date and time (Asia/Kathmandu).');
+      const ts=Date.parse(f.when+':00+05:45');
+      if(!(ts>Date.now()+60000))return this.note('Pick a time at least 1 minute in the future.');
+      return this.ask('Schedule for '+this.fmt(ts)+' on '+this.names(f.platforms)+'? It is saved on your backend only. Publishing is not enabled, so nothing will be sent.',()=>
+        this.run(async()=>{let pid=f.id;if(pid)await this.api('PATCH','/api/posts/'+pid,this.body(f));else{pid=(await this.api('POST','/api/posts',this.body(f))).post.id;f.id=pid}
+          await this.api('POST','/api/posts/'+pid+'/schedule',{scheduledAt:new Date(ts).toISOString()})},'Scheduled (not published).').then(ok=>{if(ok){this.form=null;this.show('drafts')}}))}
+    if(a==='edit'&&p){this.form={id:p.id,text:p.text,title:p.title||'',tags:p.hashtags||'',platforms:[...p.platforms],media:[...p.media],when:''};return this.show('compose')}
+    if(a==='unsched'&&p)return this.ask('Cancel this schedule? The post goes back to draft.',()=>this.run(()=>this.api('POST','/api/posts/'+id+'/cancel'),'Schedule cancelled.').then(()=>this.sync('drafts')));
+    if(a==='del'&&p)return this.ask('Delete this draft? This cannot be undone.',()=>this.run(()=>this.api('DELETE','/api/posts/'+id),'Draft deleted.').then(()=>this.sync('drafts')));
+    if(a==='aid')return this.aiDraft(id);
+    if(a==='send'){const m=this.INBOX.find(x=>x.id===id),ta=$('#r_'+id),text=ta?ta.value.trim():'';
+      if(!text)return this.note('Write or generate a reply first.');
+      return this.ask('Record this reply to '+m.from+' on '+this.PL[m.p].n+'? DEMO inbox only: nothing is sent to any platform.\n\n'+text,()=>{this.d.replies[id]={text,ts:Date.now()};this.save();this.show('inbox')})}
+  },
+  init(){
+    $('#bSoc').onclick=()=>this.open();
+    $('#socTabs').onclick=e=>{const t=e.target.closest('[data-tab]');if(t){this.collect();this.show(t.dataset.tab)}};
+    const b=$('#socBody');
+    b.onclick=e=>{const t=e.target.closest('[data-act]');if(t)this.act(t.dataset.act,t.dataset.id)};
+    b.oninput=()=>{if(this.tab==='compose')this.prev()};
+    b.onchange=e=>{const t=e.target;
+      if(t.id==='cFile'){const f=this.collect();[...t.files].forEach(x=>f.media.push({name:x.name.slice(0,100),type:(x.type&&/^[\w.+-]+\/[\w.+-]+$/.test(x.type))?x.type:'application/octet-stream',size:x.size}));this.show('compose')}
+      if(t.dataset&&t.dataset.plat)this.prev()}}
+};
+
 /* ===== MODULE: App wiring ===== */
 async function send(){
   const i=$('#in'),text=i.value.trim();if(!text)return;i.value='';
@@ -282,7 +474,7 @@ document.querySelectorAll('[data-wipe]').forEach(b=>{const t0=b.textContent;let 
 
 addEventListener('online',UI.net);addEventListener('offline',UI.net);
 if('speechSynthesis' in window)speechSynthesis.getVoices();
-UI.renderChat();UI.net();
+UI.renderChat();UI.net();Social.init();
 if(!chat.length)UI.msg('jarvis','JARVIS online. Tap 🎤 to speak or type below. Say "help" for commands.',false);
 </script>
 </body>
