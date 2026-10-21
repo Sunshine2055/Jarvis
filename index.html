@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04080f">
+<title>JARVIS</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#04080f;--panel:#0a1422;--line:#12324a;--c:#2ee6ff;--tx:#d6f6ff;--dim:#6f9bb0;--warn:#ffb020;--bad:#ff5a6e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font-family:Rajdhani,system-ui,sans-serif;font-size:17px}
+body{display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 0,#0b2236 0,var(--bg) 60%)}
+header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+h1{font:700 18px Orbitron,sans-serif;letter-spacing:4px;margin:0;color:var(--c);flex:1}
+.badge{font-size:12px;padding:2px 8px;border:1px solid var(--line);border-radius:99px;color:var(--dim)}
+.badge.on{color:#4dffb0;border-color:#4dffb0}
+button{font:inherit;color:var(--tx);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer}
+button:active{background:#12324a}
+#orbwrap{display:flex;flex-direction:column;align-items:center;padding:10px 0 4px}
+.orb{position:relative;width:110px;height:110px;--s:6s}
+.orb i{position:absolute;inset:0;border-radius:50%;border:2px solid var(--c);border-top-color:transparent;animation:spin var(--s) linear infinite;opacity:.8}
+.orb i:nth-child(2){inset:12px;animation-direction:reverse;animation-duration:calc(var(--s)*.7);border-style:dashed}
+.orb i:nth-child(3){inset:24px;animation-duration:calc(var(--s)*.5)}
+.orb b{position:absolute;inset:38px;border-radius:50%;background:radial-gradient(circle,#fff 0,var(--c) 40%,transparent 72%);animation:pulse 2.4s ease-in-out infinite;box-shadow:0 0 28px var(--c)}
+.orb[data-s=listening]{--c:var(--warn);--s:2s}
+.orb[data-s=thinking]{--c:#b388ff;--s:1s}
+.orb[data-s=speaking]{--c:#4dffb0;--s:3s}
+.orb[data-s=speaking] b{animation-duration:.5s}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{transform:scale(1.25);opacity:.7}}
+#status{font:500 12px Orbitron,sans-serif;letter-spacing:3px;color:var(--c);margin-top:6px;text-transform:uppercase}
+#log{flex:1;overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:88%;padding:8px 12px;border-radius:12px;border:1px solid var(--line);white-space:pre-wrap;word-break:break-word}
+.msg.user{align-self:flex-end;background:#0e2a40}
+.msg.jarvis{align-self:flex-start;background:var(--panel);border-left:3px solid var(--c)}
+.msg .acts{display:flex;gap:8px;margin-top:8px}
+form{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+input,textarea,select{font:inherit;color:var(--tx);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;width:100%}
+form input{flex:1;min-width:0}
+#mic{width:48px;height:48px;border-radius:50%;padding:0;font-size:20px;flex:none}
+#mic.on{background:var(--warn);color:#000}
+.sheet{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;z-index:5;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.sheet.open{display:flex}
+.sheet .bar{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.sheet .bar h2{flex:1;margin:0;font:700 15px Orbitron,sans-serif;letter-spacing:3px;color:var(--c)}
+.sheet .body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.note{display:flex;gap:8px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.note div{flex:1;word-break:break-word}.note small{display:block;color:var(--dim)}
+label{color:var(--dim);font-size:14px}
+.danger{border-color:var(--bad);color:var(--bad)}
+.hint{color:var(--dim);font-size:14px}
+pre{white-space:pre-wrap;word-break:break-word;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin:0}
+textarea{min-height:120px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>JARVIS</h1>
+  <span class="badge" id="net">OFFLINE</span>
+  <button id="bNotes" aria-label="Notes">Notes</button>
+  <button id="bSet" aria-label="Settings">⚙</button>
+</header>
+<div id="orbwrap">
+  <div class="orb" id="orb" data-s="idle"><i></i><i></i><i></i><b></b></div>
+  <div id="status">Online · idle</div>
+</div>
+<div id="log" aria-live="polite"></div>
+<form id="f">
+  <button type="button" id="mic" aria-label="Microphone">🎤</button>
+  <input id="in" placeholder="Type a command… (try: help)" autocomplete="off">
+  <button type="submit">Send</button>
+</form>
+
+<div class="sheet" id="pNotes">
+  <div class="bar"><h2>NOTES</h2><button data-close>Close</button></div>
+  <div class="body">
+    <div style="display:flex;gap:8px"><input id="nIn" placeholder="New note"><button id="nAdd">Add</button></div>
+    <div id="nList"></div>
+  </div>
+</div>
+
+<div class="sheet" id="pSet">
+  <div class="bar"><h2>SETTINGS</h2><button data-close>Close</button></div>
+  <div class="body">
+    <label>Listening language (microphone)
+      <select id="sLang"><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="ne-NP">Nepali (नेपाली)</option><option value="hi-IN">Hindi</option></select></label>
+    <label><input type="checkbox" id="sSpeak" style="width:auto"> Speak replies aloud</label>
+    <label>Speech speed <input type="range" id="sRate" min="0.6" max="1.4" step="0.1"></label>
+    <p class="hint" id="capInfo"></p>
+    <label>AI Worker URL (needs Internet)<input id="sWorker" placeholder="https://jarvis-ai.YOURNAME.workers.dev" autocapitalize="off"></label>
+    <p class="hint">Messages that are not local commands are sent, with your last few messages, to the AI service you set up. Nothing is sent otherwise.</p>
+    <button id="bDiag">Run microphone diagnostics</button>
+    <pre id="diag" hidden></pre>
+    <hr style="border-color:var(--line);width:100%">
+    <button id="bExport">Export all data (shows JSON to copy)</button>
+    <textarea id="exOut" readonly hidden></textarea>
+    <button id="bCopy" hidden>Copy to clipboard</button>
+    <button class="danger" data-wipe="chat">Delete chat history</button>
+    <button class="danger" data-wipe="notes">Delete all notes</button>
+    <button class="danger" data-wipe="all">Delete EVERYTHING</button>
+    <p class="hint">All data stays on this device (browser storage). Nothing is uploaded. Microphone is used only while you tap 🎤.</p>
+  </div>
+</div>
+
+<script>
+/* ===== MODULE: Store (local only, safe if storage is blocked) ===== */
+const Store={mem:{},
+  get(k,d){try{const v=localStorage.getItem('jv_'+k);if(v!==null)return JSON.parse(v)}catch(e){}return k in this.mem?this.mem[k]:d},
+  set(k,v){this.mem[k]=v;try{localStorage.setItem('jv_'+k,JSON.stringify(v))}catch(e){}},
+  del(k){delete this.mem[k];try{localStorage.removeItem('jv_'+k)}catch(e){}}};
+
+/* ===== MODULE: State ===== */
+const $=s=>document.querySelector(s);
+const S=Object.assign({lang:'en-US',speak:true,rate:1},Store.get('settings',{}));
+let chat=Store.get('chat',[]), notes=Store.get('notes',[]), pending=null;
+const save=()=>{Store.set('settings',S);Store.set('chat',chat);Store.set('notes',notes)};
+
+/* ===== MODULE: UI ===== */
+const UI={
+  state(s,label){$('#orb').dataset.s=s;$('#status').textContent=(navigator.onLine?'Online':'Offline')+' · '+(label||s)},
+  msg(role,text,persist=true,actions){
+    if(persist){chat.push({role,text,ts:Date.now()});chat=chat.slice(-200);save()}
+    const d=document.createElement('div');d.className='msg '+role;d.textContent=text;
+    if(actions){const a=document.createElement('div');a.className='acts';
+      actions.forEach(([l,fn])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>{a.remove();fn()};a.appendChild(b)});d.appendChild(a)}
+    $('#log').appendChild(d);$('#log').scrollTop=1e9;return d},
+  renderChat(){$('#log').innerHTML='';chat.forEach(m=>UI.msg(m.role,m.text,false))},
+  renderNotes(){const l=$('#nList');l.innerHTML='';
+    if(!notes.length){l.innerHTML='<p class="hint">No notes yet. Say or type: note: buy milk</p>';return}
+    notes.slice().reverse().forEach(n=>{const e=document.createElement('div');e.className='note';
+      const t=document.createElement('div');t.textContent=n.text;const s=document.createElement('small');s.textContent=new Date(n.ts).toLocaleString();t.appendChild(s);
+      const b=document.createElement('button');b.textContent='✕';b.onclick=()=>{notes=notes.filter(x=>x.id!==n.id);save();UI.renderNotes()};
+      e.append(t,b);l.appendChild(e)})},
+  net(){const n=$('#net');n.textContent=navigator.onLine?'ONLINE':'OFFLINE';n.classList.toggle('on',navigator.onLine);UI.state($('#orb').dataset.s)}
+};
+
+/* ===== MODULE: Notes ===== */
+const Notes={add(text){const n={id:Date.now()+Math.random(),text:text.trim(),ts:Date.now()};notes.push(n);save();UI.renderNotes();return n}};
+
+/* ===== MODULE: Brain (replaceable providers; Phase 1 = local rules, works offline) ===== */
+const Brain={providers:{},active:'local',
+  register(name,p){this.providers[name]=p},
+  async ask(text){
+    const local=await this.providers.local.respond(text);
+    if(local!==null)return local;
+    return this.providers.worker.respond(text)}};
+Brain.register('worker',{label:'AI via your Worker (needs Internet)',async respond(){
+  if(!navigator.onLine)return 'The AI needs Internet and you are offline. Offline commands still work: time, date, notes. Type "help".';
+  if(!/^https:\/\//.test(S.worker||''))return 'AI is not set up yet. Open Settings and paste your Worker URL (starts with https://).';
+  const messages=chat.slice(-8).map(m=>({role:m.role==='user'?'user':'assistant',text:m.text}));
+  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),25000);
+  try{
+    const r=await fetch(S.worker,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages}),signal:ctl.signal});
+    let d={};try{d=await r.json()}catch(e){}
+    if(r.status===429||d.code==='limit')return 'AI usage limit reached (free tier). Try again later. Offline commands and notes still work.';
+    if(!r.ok||!d.reply)return 'AI service error ('+r.status+(d.code?', '+d.code:'')+'): '+(d.error||'no reply')+'. Offline commands still work.';
+    return d.reply;
+  }catch(e){return e.name==='AbortError'?'The AI took too long to answer. Try again.':'Could not reach the AI service. Check Internet and the Worker URL in Settings. Offline commands still work.'}
+  finally{clearTimeout(to)}
+}});
+const SITES={youtube:'https://www.youtube.com',google:'https://www.google.com',wikipedia:'https://www.wikipedia.org',maps:'https://maps.google.com',gmail:'https://mail.google.com'};
+Brain.register('local',{label:'Local rules (offline)',async respond(raw){
+  const t=raw.trim(),l=t.toLowerCase(),now=new Date();
+  if(pending){const p=pending;pending=null;
+    if(/^(yes|y|ok|confirm|हो|ठीक)/i.test(l))return p.run();
+    return 'Cancelled.'}
+  let m=t.match(/^(?:add note|save note|note|नोट)\s*[:\-]?\s*(.+)$/i);
+  if(m){Notes.add(m[1]);return 'Note saved (stored on this device): "'+m[1]+'"'}
+  if(/(show|list|read|my).*notes?|नोट हेर/.test(l)){
+    return notes.length?notes.map((n,i)=>(i+1)+'. '+n.text).join('\n'):'You have no notes.'}
+  if(/(delete|clear|erase).*notes?/.test(l))
+    return ask('Delete all '+notes.length+' notes? This cannot be undone.',()=>{notes=[];save();UI.renderNotes();return 'All notes deleted.'});
+  if(/^(what('?s| is) the time|what time|current time|time( now)?|tell me the time)\b|समय|कति बज्यो/.test(l))return 'The time is '+now.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+'.';
+  if(/^(what('?s| is) (the |today'?s )?date|today'?s date|what day is (it|today)|date|today)\??$|मिति/.test(l))return 'Today is '+now.toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'.';
+  m=l.match(/^open\s+(.+)$/);
+  if(m){const k=m[1].replace(/^(the\s+)?(website\s+)?/,'').trim();
+    if(SITES[k])return ask('Open '+k+' in your browser? (needs Internet)',()=>{window.open(SITES[k],'_blank','noopener');return 'Opening '+k+'.'});
+    return 'I can open: '+Object.keys(SITES).join(', ')+'. App launching comes in a later phase.'}
+  if(/^(hi|hello|hey|namaste|नमस्ते)/.test(l))return 'Hello. JARVIS online. Type "help" to see what I can do.';
+  if(/^help\b|के गर्न सक्छौ/.test(l))return 'Offline commands:\n• what time is it\n• what is the date\n• note: <text>  /  show notes  /  delete notes\nNeeds Internet:\n• open youtube | google | wikipedia | maps | gmail\nOpen ⚙ for language, voice and data controls.\nAnything else goes to the AI (needs Internet and setup in Settings).';
+  return null;
+}});
+function ask(q,run){
+  pending={run:async()=>run()};
+  return {confirm:q,run:async()=>{if(pending){const p=pending;pending=null;return p.run()}}};
+}
+
+/* ===== MODULE: Voice ===== */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const Voice={rec:null,listening:false,
+  speak(text){
+    if(!S.speak||!('speechSynthesis' in window)){UI.state('idle');return}
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=/[\u0900-\u097F]/.test(text)?'ne-NP':(S.lang.startsWith('en')?S.lang:'en-US');u.rate=S.rate;
+    const v=speechSynthesis.getVoices().find(v=>v.lang.replace('_','-').toLowerCase().startsWith(u.lang.slice(0,2)));
+    if(v)u.voice=v;
+    u.onstart=()=>UI.state('speaking');u.onend=u.onerror=()=>UI.state('idle');
+    speechSynthesis.speak(u)},
+  listen(){
+    if(!SR){Voice.fail('unsupported');return}
+    if(this.listening){this.rec.stop();return}
+    if('speechSynthesis' in window)speechSynthesis.cancel();
+    const r=this.rec=new SR();r.lang=S.lang;r.interimResults=true;r.continuous=false;
+    r.onstart=()=>{clearTimeout(this.wd);this.listening=true;$('#mic').classList.add('on');UI.state('listening')};
+    r.onresult=e=>{let t='',fin=false;for(const x of e.results){t+=x[0].transcript;if(x.isFinal)fin=true}
+      $('#in').value=t;if(fin)send()};
+    r.onerror=e=>Voice.fail(e.error);
+    r.onend=()=>{this.listening=false;$('#mic').classList.remove('on');if($('#orb').dataset.s==='listening')UI.state('idle')};
+    clearTimeout(this.wd);this.wd=setTimeout(()=>{if(!this.listening)Voice.fail('no-start')},4000);
+    try{r.start()}catch(e){Voice.fail('start-exception',e.message)}},
+  fail(code,extra){
+    clearTimeout(this.wd);
+    if(code==='aborted')return;
+    let fr=false;try{fr=window.top!==window.self}catch(e){fr=true}
+    const M={
+      'unsupported':'Voice input is not supported here (no SpeechRecognition). Use Chrome on Android, or type instead.',
+      'not-allowed':'Microphone blocked (not-allowed). In Chrome tap the lock icon in the address bar, then Permissions, then allow Microphone.',
+      'service-not-allowed':'Speech service blocked (service-not-allowed). Chrome refused to use Google speech recognition for this page. Also check Android Settings > Apps > Google > Permissions > Microphone.',
+      'network':'Network error. Speech recognition sends your voice to Google and needs Internet.',
+      'no-speech':'I did not hear anything. Tap the mic and start speaking right away.',
+      'audio-capture':'No microphone audio captured. Another app may be using the mic, or the mic is unavailable.',
+      'language-not-supported':'That language is not supported for voice input. Pick another in Settings.',
+      'no-start':'The microphone did not start within 4 seconds, so something is blocking speech recognition.',
+      'start-exception':'Could not start the microphone: '+(extra||'unknown error')
+    };
+    let t=M[code]||('Microphone error: '+code);
+    if(fr&&['not-allowed','service-not-allowed','no-start','start-exception'].includes(code))
+      t+='\n\nThis page is running inside a frame (like the Claude preview). That is the most likely cause. Open the app directly in Chrome over HTTPS, or run Settings > microphone diagnostics.';
+    UI.msg('jarvis',t,false);UI.state('idle','mic error: '+code)},
+  async diagnose(){
+    const L=[],add=(k,v)=>L.push(k+': '+v);
+    add('Page origin',location.origin);
+    add('Secure context (HTTPS)',window.isSecureContext);
+    let fr;try{fr=window.top!==window.self}catch(e){fr=true}
+    add('Inside a frame',fr);
+    add('SpeechRecognition',window.SpeechRecognition?'yes':'no');
+    add('webkitSpeechRecognition',window.webkitSpeechRecognition?'yes':'no');
+    try{const f=document.featurePolicy||document.permissionsPolicy;add('Frame policy allows microphone',f?f.allowsFeature('microphone'):'unknown')}catch(e){add('Frame policy allows microphone','unknown')}
+    try{const p=await navigator.permissions.query({name:'microphone'});add('Microphone permission',p.state)}catch(e){add('Microphone permission','cannot read ('+e.name+')')}
+    try{const s=await navigator.mediaDevices.getUserMedia({audio:true});s.getTracks().forEach(t=>t.stop());add('getUserMedia mic test','OK')}catch(e){add('getUserMedia mic test','FAILED: '+e.name)}
+    add('Internet',navigator.onLine);
+    add('Browser',navigator.userAgent);
+    return L.join('\n')}};
+
+/* ===== MODULE: App wiring ===== */
+async function send(){
+  const i=$('#in'),text=i.value.trim();if(!text)return;i.value='';
+  UI.msg('user',text);UI.state('thinking');
+  let r;try{r=await Brain.ask(text)}catch(e){r='Error: '+e.message}
+  if(r&&r.confirm){
+    UI.msg('jarvis',r.confirm,true,[['Yes',async()=>reply(await r.run())],['No',()=>{pending=null;reply('Cancelled.')}]]);
+    UI.state('idle');Voice.speak(r.confirm);return}
+  reply(r)}
+function reply(t){UI.msg('jarvis',t);Voice.speak(t);if(!S.speak)UI.state('idle')}
+
+$('#f').onsubmit=e=>{e.preventDefault();send()};
+$('#mic').onclick=()=>Voice.listen();
+$('#bNotes').onclick=()=>{UI.renderNotes();$('#pNotes').classList.add('open')};
+$('#bSet').onclick=()=>$('#pSet').classList.add('open');
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('.sheet').classList.remove('open'));
+$('#nAdd').onclick=()=>{const v=$('#nIn').value;if(v.trim()){Notes.add(v);$('#nIn').value=''}};
+
+$('#sLang').value=S.lang;$('#sSpeak').checked=S.speak;$('#sRate').value=S.rate;
+$('#sLang').onchange=e=>{S.lang=e.target.value;save()};
+$('#sSpeak').onchange=e=>{S.speak=e.target.checked;save()};
+$('#sRate').oninput=e=>{S.rate=+e.target.value;save()};
+$('#sWorker').value=S.worker||'';
+$('#sWorker').onchange=e=>{S.worker=e.target.value.trim();save()};
+$('#capInfo').textContent='Voice input: '+(SR?'available':'NOT available in this browser')+' · Spoken replies: '+(('speechSynthesis' in window)?'available':'NOT available')+'. Nepali voice depends on your phone having a Nepali voice installed (Android Settings → Text-to-speech).';
+
+$('#bDiag').onclick=async()=>{const p=$('#diag');p.hidden=false;p.textContent='Running...';p.textContent=await Voice.diagnose()};
+$('#bExport').onclick=()=>{const o=$('#exOut');o.value=JSON.stringify({exported:new Date().toISOString(),settings:S,notes,chat},null,2);o.hidden=false;$('#bCopy').hidden=false};
+$('#bCopy').onclick=async()=>{const o=$('#exOut');try{await navigator.clipboard.writeText(o.value);$('#bCopy').textContent='Copied ✓'}catch(e){o.select();$('#bCopy').textContent='Select text & copy manually'}};
+document.querySelectorAll('[data-wipe]').forEach(b=>{const t0=b.textContent;let armed=false;
+  b.onclick=()=>{if(!armed){armed=true;b.textContent='Tap again to confirm';setTimeout(()=>{armed=false;b.textContent=t0},3500);return}
+    armed=false;b.textContent=t0;const k=b.dataset.wipe;
+    if(k==='chat'||k==='all')chat=[];if(k==='notes'||k==='all')notes=[];
+    if(k==='all'){Store.del('settings')}save();UI.renderChat();UI.renderNotes()}});
+
+addEventListener('online',UI.net);addEventListener('offline',UI.net);
+if('speechSynthesis' in window)speechSynthesis.getVoices();
+UI.renderChat();UI.net();
+if(!chat.length)UI.msg('jarvis','JARVIS online. Tap 🎤 to speak or type below. Say "help" for commands.',false);
+</script>
+</body>
+</html>
